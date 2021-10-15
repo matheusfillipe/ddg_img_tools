@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from inspect import signature
 import shutil
 import sys
 from pathlib import Path
@@ -11,18 +12,47 @@ from PyQt5.QtWebEngineWidgets import *
 from PyQt5.QtWidgets import *
 
 from DuckDuckGoImages import _download, get_image_urls
-from images_sample import IMAGES
-
-# TODO loading indicator
+# from images_sample import IMAGES
 
 
 def search_arg_images():
     return get_image_urls(" ".join(sys.argv[1:]))
 
 
+class Runner(QThread):
+    def __init__(self, target, *args, **kwargs):
+        super().__init__()
+        self._target = target
+        self._args = args
+        self._kwargs = kwargs
+
+    def run(self):
+        if len(self._kwargs.keys()) == 0 and len(self._args) == 0:
+            self._target()
+        else:
+            if len(signature(self._target).parameters) > 0:
+                self._target(*self._args, **self._kwargs)
+            else:
+                self._target()
+
+def nogui(func):
+    from functools import wraps
+
+    @wraps(func)
+    def async_func(*args, **kwargs):
+        runner = Runner(func, *args, **kwargs)
+        # Keep the runner somewhere or it will be destroyed
+        func.__runner = runner
+        runner.start()
+
+    return async_func
+
+
 class MainWindow(QMainWindow):
     n_images = 12
     n_columns = 4
+    setloading=pyqtSignal(bool)
+    reloadui=pyqtSignal(list)
 
     def __init__(self, images: [str], start_index: int = 0):
         """__init__.
@@ -35,7 +65,10 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.images = images
         self.page = 0
-        self.lbl_loading = QLabel()
+        self.lbl_loading = QLabel(self)
+        self.selected_widget = None
+        self.setloading.connect(self.set_loading)
+        self.reloadui.connect(self.render)
         self.render(images, self.page)
 
     def render(self, images: [str] = None, start_index: int = 0):
@@ -66,6 +99,7 @@ class MainWindow(QMainWindow):
             img.load(QUrl(url))
             grid.addWidget(img)
             border_widget.setLayout(grid)
+            border_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
             pos = (int(i / n_columns), i % n_columns)
             grid_layout.addWidget(border_widget, *pos)
             self.image_grid_widgets[pos[1]].append(border_widget)
@@ -111,10 +145,11 @@ class MainWindow(QMainWindow):
         bottom_row.addWidget(btn_next)
         bottom_row.addWidget(btn_last)
 
+        @nogui
         def search_images():
-            self.set_loading(True)
-            self.render(get_image_urls(self.searchbar.text()))
-            self.set_loading(False)
+            self.setloading.emit(True)
+            self.reloadui.emit(get_image_urls(self.searchbar.text()))
+            self.setloading.emit(False)
 
         searchbar = QLineEdit()
         searchbar.setPlaceholderText("Search for images...")
@@ -139,8 +174,13 @@ class MainWindow(QMainWindow):
                 else QSizePolicy.Minimum,
             )
         )
+        sizePolicy = QSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.Minimum)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
         label_row = QHBoxLayout()
-        label_row.addItem(QSpacerItem(1, 1, QSizePolicy.Maximum, QSizePolicy.Minimum))
+        label_row.addItem(QSpacerItem(1, 1, QSizePolicy.Expanding, QSizePolicy.Minimum))
+        self.lbl_loading.setText("Opened.")
+        self.lbl_loading.setSizePolicy(sizePolicy)
         label_row.addWidget(self.lbl_loading)
 
         vlayout.addLayout(bottom_row)
@@ -153,6 +193,7 @@ class MainWindow(QMainWindow):
             self.select_item(0, 0)
 
     def set_loading(self, is_loading: bool):
+        QApplication.processEvents()
         if is_loading:
             self.lbl_loading.setText("Loading....")
         else:
@@ -204,7 +245,8 @@ class MainWindow(QMainWindow):
         elif e.key() == Qt.Key_Y:
             self.copy_image()
         elif e.key() == Qt.Key_Return:
-            self.save_image()
+            if self.selected_widget and self.selected_widget.hasFocus():
+                self.save_image()
 
         # Image navigation
         elif e.key() == Qt.Key_G and "shift" in modifiers:
@@ -245,32 +287,40 @@ class MainWindow(QMainWindow):
         return Path(f"{str(file)}.jpg")
 
     def save_image(self):
-        self.set_loading(True)
-        img = self.download_current_img()
-        self.set_loading(False)
-        filename = QFileDialog.getSaveFileName(filter="jpeg file(*.jpeg)")[0]
+        filename = QFileDialog.getSaveFileName(directory=str(Path.home()), filter="jpeg file(*.jpeg)")[0]
         if not filename:
             return
         filename = filename if filename.endswith(".jpeg") else filename + ".jpeg"
-        self.set_loading(True)
-        shutil.copyfile(str(img), filename)
-        img.unlink()
-        self.set_loading(False)
+        @nogui
+        def download_and_process_image(filename):
+            self.setloading.emit(True)
+            img = self.download_current_img()
+            shutil.copyfile(str(img), filename)
+            try:
+                img.unlink()
+            except e:
+                print("Failed to remove temp file")
+            self.setloading.emit(False)
+        download_and_process_image(filename)
 
+    @nogui
     def copy_image(self):
-        self.set_loading(True)
+        self.setloading.emit(True)
         img = self.download_current_img()
         pixmap = QPixmap(str(img))
         QApplication.clipboard().setPixmap(pixmap)
-        img.unlink()
-        self.set_loading(False)
+        try:
+            img.unlink()
+        except e:
+            print("Failed to remove temp file")
+        self.setloading.emit(False)
 
 
 def main():
     print("loading....")
-    images = IMAGES
-    # images = search_arg_images()
+    # images = IMAGES
     # images = []
+    images = search_arg_images()
     app = QApplication(sys.argv)
     window = MainWindow(images)
     window.show()
