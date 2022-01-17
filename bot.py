@@ -5,10 +5,11 @@ import json
 import logging
 import random
 import random as r
+import time
 
 from dotenv import dotenv_values
-from telegram import (BotCommand, InlineKeyboardButton, InlineKeyboardMarkup,
-                      Poll)
+
+from telegram import (BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Message, Poll)
 from telegram.ext import (CallbackQueryHandler, CommandHandler,
                           PicklePersistence, PollAnswerHandler, Updater)
 
@@ -101,10 +102,13 @@ def receive_quiz_answer(update, context):
         context.user_data["wrong"] += 1
 
 
-def button_handler(query, u, c):
+def button_handler(query, u, c, callback=None):
     query = json.loads(query)
     if query["type"] == "more":
         more(u, c, query["message_id"])
+    elif query["type"] == "moreq":
+        u.message = callback.message
+        quiz(u, c)
 
 
 def get_arguments(update):
@@ -200,7 +204,18 @@ def add_query(u, c):
     u.message.reply_text("Adding queries... This can take a while")
     for query in queries:
         imgs = get_image_urls(query)
+        skip = 0
+        while len(imgs) == 0:
+            skip += 1
+            time.sleep(skip)
+            print(f"retriyng to get {query}....")
+            imgs = get_image_urls(query)
+            if skip > 3:
+                continue
         query = {"query": query, "urls": imgs}
+        if len(imgs) == 0:
+            u.message.reply_text(f"No results for: {query['query']}")
+            continue
         c.chat_data["quiz"][name]["queries"].append(query)
         u.message.reply_text(f"Added query: {query['query']}")
     u.message.reply_text(
@@ -304,6 +319,18 @@ def quiz(u, c):
     }
     c.bot_data.update(payload)
 
+    # More button
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "More",
+                callback_data=json.dumps({"type": "moreq", "message_id": u.message.message_id}),
+            ),
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    u.message.reply_text("Options: ", reply_markup=reply_markup)
+
 
 commands_dict = [
     {"cmd": "start", "func": start, "desc": "See the Instructions"},
@@ -316,8 +343,10 @@ commands_dict = [
     {"cmd": "queries", "func": queries, "desc": "Lists all queries for a quiz"},
     {"cmd": "remove", "func": remove_quiz, "desc": "Removes a quiz"},
     {"cmd": "quiz", "func": quiz, "desc": "Gets a random query from a quiz"},
-    {"cmd": "imgquiz", "func": quiz, "desc": "Same as /quiz"},
     {"cmd": "score", "func": score, "desc": "Shows your score"},
+    {"cmd": "gquiz", "func": quiz, "desc": "Same as /quiz"},
+    {"cmd": "gsearch", "func": search, "desc": "Same as /search"},
+    {"cmd": "gscore", "func": score, "desc": "Same as /score"},
     {
         "cmd": "reset",
         "func": lambda u, c: [
@@ -339,7 +368,7 @@ for cmd in commands_dict:
 
 def button(update, context):
     query = update.callback_query.data
-    button_handler(query, update, context)
+    button_handler(query, update, context, update.callback_query)
 
 
 updater.bot.set_my_commands(descriptions)
