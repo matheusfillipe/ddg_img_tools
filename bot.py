@@ -1,256 +1,76 @@
 #!/usr/bin/env python
 
+import datetime
+import json
 import logging
 import random
+import random as r
 
 from dotenv import dotenv_values
+from telegram import (BotCommand, InlineKeyboardButton, InlineKeyboardMarkup,
+                      Poll)
+from telegram.ext import (CallbackQueryHandler, CommandHandler,
+                          PicklePersistence, PollAnswerHandler, Updater)
 
-from . import DuckDuckGoImages as ddg
-
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Poll, BotCommand, InlineQueryResultArticle, InputTextMessageContent
-from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, InlineQueryHandler, PollAnswerHandler, PollHandler, PicklePersistence, MessageHandler, Filters
+from DuckDuckGoImages import get_image_urls
 
 config = dotenv_values(".env")
+MAX_OPT = 5
 
-my_persistence = PicklePersistence(filename='bot_data', store_user_data=True, store_chat_data=True, store_bot_data=True, single_file=False)
+my_persistence = PicklePersistence(
+    filename="bot_data",
+    store_user_data=True,
+    store_chat_data=True,
+    store_bot_data=True,
+    single_file=False,
+)
 
-updater = Updater(token=config['TG_BOT_KEY'], persistence=my_persistence, use_context=True)
+updater = Updater(
+    token=config["TG_BOT_KEY"], persistence=my_persistence, use_context=True
+)
 
 dispatcher = updater.dispatcher
 
 
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                     level=logging.INFO)
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.DEBUG
+)
 
 
 print("Starting bot...")
 
 
-def random(u, c):
-   c.bot.send_photo(chat_id=u.effective_chat.id, photo=requests.get("https://dog.ceo/api/breeds/image/random").json()["message"])
-
-def listbreeds(u, c):
-   global breeds
-   bl=r.sample(breeds, 30)
-   keyboard=[[InlineKeyboardButton(bl[i*2+j], callback_data=bl[i*2+j]) for j in range(0,2)] for i in range(0,10)]
-   reply_markup = InlineKeyboardMarkup(keyboard)
-   u.message.reply_text('Please choose a breed:', reply_markup=reply_markup)
-
-def somebreeds(u, c):
-   global breeds
-   bl=r.sample(breeds, 30)
-   c.bot.send_message(chat_id=u.effective_chat.id, text="\n".join(bl))
-
-def getrbreed(b, u, c):	
-   c.bot.send_photo(chat_id=u.effective_chat.id, photo=requests.get("https://dog.ceo/api/breed/"+b+"/images/random").json()["message"])
-
-def bark(u, c):
-   import os
-   filep="dog_bark.mp3"
-   try:
-      os.remove(filep)
-   except OSError:
-      pass
-   ri=r.randint
-   n=(ri(0,2), ri(0,59), ri(0,50))
-   crop("%02d:%02d:%02d"% n, "%02d:%02d:%02d"%(n[0],n[1],n[2]+10),"dog.mp3",filep)
-   c.bot.send_audio(chat_id=u.effective_chat.id, audio=open(filep, 'rb'))
-
-
-def start(u, c):
-   c.bot.send_message(chat_id=u.effective_chat.id, text="Hello! I am dog bot and my name is marco!  \n\nType /randog to see a random dog, \n/list to see the availlabe breed names. Those names are also commands.\nType /search `breed_name` to search for a breed name \n/bark to hear my bark and \n/quiz for a marco challenge!! (/score to see how bad you are)")
-
-def getArg(update):
-    try:
-        return "".join(update.message.text.split(" ")[1:])
-    except:
-        pass
-
-
-def inline_search(update, context):
-    global breeds
-    query = getArg(update)
-    if not query:
-        return
-    
-    bl=[b for b in breeds if query.lower() in b.lower()]
-    bl=list(set(bl))
-    keyboard=[InlineKeyboardButton(b, callback_data=b) for b in bl]
-    if len(keyboard)==0:
-        update.message.reply_text("Sorry... no results :(")
-        return 
-    if len(keyboard)>30:
-        keyboard=keyboard[:30]
-
-    keyboard= [[keyboard[0]]] if len(bl)==1 else [[keyboard[i*2+j] for j in range(0,2)] for i in range(0,int(len(keyboard)/2))]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    update.message.reply_text('Search results:', reply_markup=reply_markup)
-
-def echo(update, context):
-    global handler_cmds
-    try:
-        query =  update.message.text
-    except:
-        return
-    if query.lower().startswith("marco ") and len(query.split(" "))==2:
-        if query=="marco bark":
-            bark(update, context)
-        elif query=="marco roll":
-            update.message.reply_text("https://media.giphy.com/media/NnafYvjXZK9j2/giphy.gif")
-        elif query.split(" ")[1] in handler_cmds:
-            handler_cmds[query.split(" ")[1]](update, context)
-        else:
-            update.message.reply_text("https://media.giphy.com/media/1yiNv0xauBg8SHLAJT/giphy.gif")
-
-def breedName(l): 
-    l=l.split("/")[-2].split('-') 
-    l=[f"{n[0].upper()}{n[1:]}" for n in l] 
-    l.reverse() 
-    return " ".join(l) 
-
-def init_status(context):
-    for key in ["score", "combo", "max_combo", "wrong"]:
-        if not key in context.user_data:
-            context.user_data[key]=0
-
-def quiz(update, context):
-    init_status(context)
-    link=requests.get("https://dog.ceo/api/breeds/image/random").json()["message"]
-    context.user_data["last_link"] = link
-    img_msg=context.bot.send_photo(chat_id=update.effective_chat.id, photo=link)    
-    questions = [breedName(link)]+[breedName(requests.get("https://dog.ceo/api/breeds/image/random").json()["message"]) for i in range(4)]
-    while len(list(dict.fromkeys(questions)))<5:
-        questions.append(breedName(requests.get("https://dog.ceo/api/breeds/image/random").json()["message"]))
-    questions=list(dict.fromkeys(questions))
-    r.shuffle(questions)
-    opt_id=questions.index(breedName(link))
-    message = update.effective_message.reply_poll("What breed is this 🐶 ???",
-                                                  questions, is_anonymous=False, type=Poll.QUIZ, correct_option_id=opt_id)
-    # Save some info about the poll the bot_data for later use in receive_quiz_answer
-    payload = {message.poll.id: {"chat_id": update.effective_chat.id,
-                                 "message_id": message.message_id,
-                                 "i": opt_id }}
-    context.bot_data.update(payload)
-
-def receive_quiz_answer(update, context):
-    # the bot can receive closed poll updates we don't care about
-    answer = update.poll_answer
-    poll_id = answer.poll_id
-    selected_option = answer.option_ids[-1]
-    right_option=context.bot_data[poll_id]["i"]
-    if selected_option==right_option:
-        context.user_data["score"]+=1
-        context.user_data["combo"]+=1
-        context.user_data["max_combo"]=max(context.user_data["combo"], context.user_data["max_combo"])
-    else:
-        context.user_data["combo"]=0
-        context.user_data["wrong"]+=1
-
-#    if update.poll.is_closed:
-#        return
-#    if update.poll.total_voter_count == 2:
-#        try:
-#            quiz_data = context.bot_data[update.poll.id]
-#        # this means this poll answer update is from an old poll, we can't stop it then
-#        except KeyError:
-#            return
-#        context.bot.stop_poll(quiz_data["chat_id"], quiz_data["message_id"])    
-#
-def score(u,c):
-    #init_status(c)
-    msg=f'''
-
-    Total Score: {c.user_data["score"]}
-
-    Combo: {c.user_data["combo"]}
-
-    Max Combo: {c.user_data["max_combo"]}
-
-    Precision: {round(c.user_data["score"]*100/(max(c.user_data["wrong"]+c.user_data["score"], 1)),4)}%
-    '''
-
-    u.message.reply_text(msg)
-
-def check_link(u,c):
-    link = c.user_data.get("last_link") 
-    if link:
-        u.message.reply_text(str(link))
-    else:
-        u.message.reply_text("There is no quizz link from you")
 help_msg = ""
 
 
 def start(u, c):
     global help_msg
-    c.bot.send_message(chat_id=u.effective_chat.id, text="""
-        Welcome! Get started!""" + "\n\n" + help_msg)
+    c.bot.send_message(
+        chat_id=u.effective_chat.id,
+        text="""
+        Welcome! Get started!"""
+        + "\n\n"
+        + help_msg,
+    )
 
 
 def reset_score(context):
     for key in ["score", "combo", "max_combo", "wrong"]:
         context.user_data[key] = 0
-    context.user_data['date'] = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
-
-def quiz_menu(u, c):
-    keyboard = [[InlineKeyboardButton(categories[i*2+j]["name"], callback_data=json.dumps({'type': 'menu', 'id': categories[i*2+j]['id']})) for j in range(0, 2)] for i in range(0, int(len(categories)/2))]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    u.effective_message.reply_text('Choose a category', reply_markup=reply_markup)
+    context.user_data["date"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def check_score(c):
-    if not "wrong" in c.user_data:
+    if "date" not in c.user_data:
         reset_score(c)
-
-def bdecode(code):
-    #code_with_padding = f"{code}{'=' * ((4 - len(code) % 4) % 4)}"
-    #return base64.b64decode(code_with_padding)#.decode("utf-8")
-    return unescape(code) 
-
-def quiz(update, context):
-    c = context
-    if not "query" in c.chat_data:
-        quiz_menu(update, context)
-        return
-    check_score(c)
-    ammount = 1 if not update.effective_message.text.split(" ")[-1].isdigit() else min(10, int(update.effective_message.text.split(" ")[1]))
-    ammount = 1 if ammount < 0 else ammount
-    for data in requests.get(
-        c.chat_data["query"]%ammount).json()["results"]:
-        questions = [bdecode(data['correct_answer'])] + [bdecode(s) for s in data['incorrect_answers']]
-        random.shuffle(questions)
-        opt_id=questions.index(bdecode(data['correct_answer']))
-        message = update.effective_message.reply_poll(bdecode(data['question']), questions, is_anonymous=False, type=Poll.QUIZ, correct_option_id=opt_id)
-        # Save some info about the poll the bot_data for later use in receive_quiz_answer
-        payload = {message.poll.id: {"chat_id": update.effective_chat.id,
-                                     "message_id": message.message_id,
-                                     "i": opt_id}}
-        context.bot_data.update(payload)
-
-
-def receive_quiz_answer(update, context):
-    # the bot can receive closed poll updates we don't care about
-    answer = update.poll_answer
-    poll_id = answer.poll_id
-    selected_option = answer.option_ids[-1]
-    right_option = context.bot_data[poll_id]["i"]
-    if selected_option == right_option:
-        context.user_data["score"] += 1
-        context.user_data["combo"] += 1
-        context.user_data["max_combo"] = max(
-            context.user_data["combo"], context.user_data["max_combo"])
-    else:
-        context.user_data["combo"] = 0
-        context.user_data["wrong"] += 1
-
 
 
 def score(u, c):
     check_score(c)
-    msg = f'''
+    msg = f"""
         {c.user_data["date"]}
 
-    Total Quizes: {c.user_data["wrong"]+c.user_data["score"]}
+    Total Quizes: {c.user_data["wrong"] + c.user_data["score"]}
 
     Total Score:  {c.user_data["score"]}
 
@@ -259,45 +79,261 @@ def score(u, c):
     Max Combo:    {c.user_data["max_combo"]}
 
     Precision:    {round(c.user_data["score"]*100/(max(c.user_data["wrong"]+c.user_data["score"], 1)),4)}%
-    '''
+    """
     u.message.reply_text(msg)
+
+
+def receive_quiz_answer(update, context):
+    # the bot can receive closed poll updates we don't care about
+    check_score(context)
+    answer = update.poll_answer
+    poll_id = answer.poll_id
+    selected_option = answer.option_ids[-1]
+    right_option = context.bot_data[poll_id]["i"]
+    if selected_option == right_option:
+        context.user_data["score"] += 1
+        context.user_data["combo"] += 1
+        context.user_data["max_combo"] = max(
+            context.user_data["combo"], context.user_data["max_combo"]
+        )
+    else:
+        context.user_data["combo"] = 0
+        context.user_data["wrong"] += 1
 
 
 def button_handler(query, u, c):
     query = json.loads(query)
-    if query['type'] == 'menu':
-        subject = query['id']
-        keyboard = [[InlineKeyboardButton("Multiple Choices", callback_data=json.dumps({'type': 'multiple', 'id': subject})), InlineKeyboardButton("True/False", callback_data=json.dumps({'type': 'tf', 'id': subject}))]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
+    if query["type"] == "more":
+        more(u, c, query["message_id"])
 
-        u.effective_message.reply_text('Choose a quiz type:', reply_markup=reply_markup)
 
-    elif query['type'] == 'multiple':
-        subject = query['id']
-        u.effective_message.reply_text(f"Set multiple choice quiz with subject {[s['name'] for s in categories if s['id'] == subject ][0]}")
-        c.chat_data['query'] = "https://opentdb.com/api.php?amount=%d&category=" + str(subject) + "&type=multiple"
-        
-    elif query['type'] == 'tf':
-        subject = query['id']
-        u.effective_message.reply_text(f"Set True or False quiz with subject {[s['name'] for s in categories if s['id'] == subject ][0]}")
-        c.chat_data['query'] = "https://opentdb.com/api.php?amount=%d&category=" + str(subject) + "&type=boolean"
+def get_arguments(update):
+    return update.message.text.split(" ")[1:]
+
+
+def search(u, c):
+    args = get_arguments(u)
+    if len(args) == 0:
+        u.message.reply_text("Syntax: /search <query>")
+        return
+    imgs = get_image_urls(" ".join(args))
+    if len(imgs) == 0:
+        u.message.reply_text("No images found")
+        return
+    c.user_data["image_urls"] = imgs
+    img = c.user_data["image_urls"].pop(0)
+    u.message.reply_photo(img)
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "More",
+                callback_data=json.dumps(
+                    {"type": "more", "message_id": u.message.message_id}
+                ),
+            ),
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    u.message.reply_text("Options: ", reply_markup=reply_markup)
+
+
+def more(u, c, m_id=None):
+    m_id = m_id if u.message is None else u.message.message_id
+    if "image_urls" not in c.user_data:
+        c.bot.send_message(
+            u.effective_message.chat_id,
+            "No images found",
+            reply_to_message_id=m_id,
+        )
+        return
+    img = c.user_data["image_urls"].pop(0)
+    c.bot.send_photo(
+        u.effective_message.chat_id,
+        img,
+        reply_to_message_id=m_id,
+    )
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "More",
+                callback_data=json.dumps({"type": "more", "message_id": m_id}),
+            ),
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    c.bot.send_message(
+        u.effective_message.chat_id,
+        "Options: ",
+        reply_to_message_id=m_id,
+        reply_markup=reply_markup,
+    )
+
+
+def create_quiz(u, c):
+    args = get_arguments(u)
+    if len(args) == 0:
+        u.message.reply_text("Syntax: /create <name>")
+        return
+    name = args[0]
+    if "quiz" not in c.chat_data:
+        c.chat_data["quiz"] = {}
+    c.chat_data["quiz"][name] = {"name": name, "queries": []}
+    u.message.reply_text(
+        f"Created quiz: \"{name}\". Use ' /add {name} <query> ' to add search queries. You can add multiple queries at once separating them by comma."
+    )
+
+
+def add_query(u, c):
+    args = get_arguments(u)
+    if len(args) < 2:
+        u.message.reply_text(
+            "Syntax: /add <quiz_name> <query>. Use /quizes to list quizes"
+        )
+        return
+    name = args[0]
+    if "quiz" not in c.chat_data:
+        c.chat_data["quiz"] = {}
+    if name not in c.chat_data["quiz"]:
+        u.message.reply_text(f"Quiz {name} not found. Use /quizes to list quizes")
+        return
+    queries = [s.strip() for s in " ".join(args[1:]).split(",") if s.strip() != ""]
+    u.message.reply_text("Adding queries... This can take a while")
+    for query in queries:
+        imgs = get_image_urls(query)
+        query = {"query": query, "urls": imgs}
+        c.chat_data["quiz"][name]["queries"].append(query)
+        u.message.reply_text(f"Added query: {query['query']}")
+    u.message.reply_text(
+        f"Added {len(queries)} queries to quiz {name}. Use /queries {name} to list queries for a quiz."
+    )
+
+
+def quizes(u, c):
+    if "quiz" not in c.chat_data:
+        c.chat_data["quiz"] = {}
+    if len(c.chat_data["quiz"]) == 0:
+        u.message.reply_text("No quizes found")
+        return
+    msg = "Quizes:\n"
+    for q in c.chat_data["quiz"].values():
+        msg += f"{q['name']}\n"
+    u.message.reply_text(msg)
+
+
+def queries(u, c):
+    args = get_arguments(u)
+    if len(args) == 0:
+        u.message.reply_text("Syntax: /queries <quiz_name>")
+        return
+    name = args[0]
+    if "quiz" not in c.chat_data:
+        c.chat_data["quiz"] = {}
+    if name not in c.chat_data["quiz"]:
+        u.message.reply_text(f"Quiz {name} not found. Use /quizes to list quizes")
+        return
+    msg = f"Queries for quiz {name}:\n"
+    for q in c.chat_data["quiz"][name]["queries"]:
+        msg += f"{q['query']}\n"
+    u.message.reply_text(msg)
+
+
+def remove_quiz(u, c):
+    args = get_arguments(u)
+    if len(args) == 0:
+        u.message.reply_text("Syntax: /remove <quiz_name>")
+        return
+    name = args[0]
+    if "quiz" not in c.chat_data:
+        c.chat_data["quiz"] = {}
+    if name not in c.chat_data["quiz"]:
+        u.message.reply_text(f"Quiz {name} not found. Use /quizes to list quizes")
+        return
+    del c.chat_data["quiz"][name]
+    u.message.reply_text(f"Removed quiz {name}")
+
+
+def quiz(u, c):
+    args = get_arguments(u)
+    if len(args) == 0 and "last_quiz_name" not in c.chat_data:
+        u.message.reply_text("Syntax: /quiz <quiz_name>")
+        return
+    elif len(args) == 0:
+        name = c.chat_data["last_quiz_name"]
+    else:
+        name = args[0]
+    if "quiz" not in c.chat_data:
+        c.chat_data["quiz"] = {}
+    if name not in c.chat_data["quiz"]:
+        u.message.reply_text(f"Quiz {name} not found. Use /quizes to list quizes")
+        return
+    quiz = c.chat_data["quiz"][name]
+    c.chat_data["last_quiz_name"] = name
+    if len(quiz["queries"]) == 0:
+        u.message.reply_text(
+            f"Quiz {name} has no queries. Use /add {name} <query> to add queries"
+        )
+        return
+    random_query = r.choice(quiz["queries"])
+    random_url = r.choice(random_query["urls"])
+    u.message.reply_photo(random_url)
+
+    options = [
+        q["query"]
+        for q in r.sample(
+            [q for q in quiz["queries"] if q["query"] != random_query["query"]],
+            min(len(quiz["queries"]), MAX_OPT) - 1,
+        )
+    ] + [random_query["query"]]
+    r.shuffle(options)
+
+    opt_id = options.index(random_query["query"])
+    message = u.effective_message.reply_poll(
+        "????",
+        options,
+        is_anonymous=False,
+        type=Poll.QUIZ,
+        correct_option_id=opt_id,
+    )
+    # Save some info about the poll the bot_data for later use in receive_quiz_answer
+    payload = {
+        message.poll.id: {
+            "chat_id": u.effective_chat.id,
+            "message_id": message.message_id,
+            "i": opt_id,
+        }
+    }
+    c.bot_data.update(payload)
 
 
 commands_dict = [
     {"cmd": "start", "func": start, "desc": "See the Instructions"},
     {"cmd": "help", "func": start, "desc": "See the Instructions"},
-    {"cmd": "score", "func": score, "desc": "Check your score"},
-    {"cmd": "menu_quiz", "func": quiz_menu, "desc": "start a new quiz"},
-    {"cmd": "quiz", "func": quiz, "desc": "Sends the quiz that was set by /quiz_menu. You can do multiple quizes at the same time by passing a number e.g. /quiz 5 (max 10)"},
-    {"cmd": "reset", "func": lambda u, c: [reset_score(c), u.message.reply_text("Your score was reset")], "desc": "Resets your score"},
+    {"cmd": "search", "func": search, "desc": "Searches for images"},
+    {"cmd": "more", "func": more, "desc": "Get's next result for your search"},
+    {"cmd": "create", "func": create_quiz, "desc": "Creates a new quiz"},
+    {"cmd": "add", "func": add_query, "desc": "Adds a query to a quiz"},
+    {"cmd": "quizes", "func": quizes, "desc": "Lists all quizes"},
+    {"cmd": "queries", "func": queries, "desc": "Lists all queries for a quiz"},
+    {"cmd": "remove", "func": remove_quiz, "desc": "Removes a quiz"},
+    {"cmd": "quiz", "func": quiz, "desc": "Gets a random query from a quiz"},
+    {"cmd": "imgquiz", "func": quiz, "desc": "Same as /quiz"},
+    {"cmd": "score", "func": score, "desc": "Shows your score"},
+    {
+        "cmd": "reset",
+        "func": lambda u, c: [
+            reset_score(c),
+            u.message.reply_text("Your score was reset"),
+        ],
+        "desc": "Resets your score",
+    },
 ]
 
 
 descriptions = []
 for cmd in commands_dict:
-    handlers = CommandHandler(cmd['cmd'], cmd['func'])
+    handlers = CommandHandler(cmd["cmd"], cmd["func"])
     dispatcher.add_handler(handlers)
-    descriptions.append(BotCommand(cmd['cmd'], cmd['desc']))
+    descriptions.append(BotCommand(cmd["cmd"], cmd["desc"]))
     help_msg += f"/{cmd['cmd']}: {cmd['desc']}\n"
 
 
@@ -311,6 +347,3 @@ dispatcher.add_handler(CallbackQueryHandler(button))
 dispatcher.add_handler(PollAnswerHandler(receive_quiz_answer))
 
 updater.start_polling()
-
-echo_handler = MessageHandler(Filters.text & (~Filters.command), echo)
-dispatcher.add_handler(echo_handler)

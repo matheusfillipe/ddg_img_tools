@@ -263,9 +263,9 @@ class MainWindow(QMainWindow):
             self.selection_move(0, 1)
         elif e.key() in [Qt.Key_Up, Qt.Key_K]:
             self.selection_move(0, -1)
-        elif e.key() in [Qt.Key_Left, Qt.Key_H]:
+        elif e.key() in [Qt.Key_Left, Qt.Key_H, Qt.Key_B]:
             self.selection_move(-1, 0)
-        elif e.key() in [Qt.Key_Right, Qt.Key_L]:
+        elif e.key() in [Qt.Key_Right, Qt.Key_L, Qt.Key_W]:
             self.selection_move(1, 0)
 
         # Page navigation
@@ -298,7 +298,7 @@ class MainWindow(QMainWindow):
             shutil.copyfile(str(img), filename)
             try:
                 img.unlink()
-            except e:
+            except:
                 print("Failed to remove temp file")
             self.setloading.emit(False)
         download_and_process_image(filename)
@@ -311,7 +311,7 @@ class MainWindow(QMainWindow):
         QApplication.clipboard().setPixmap(pixmap)
         try:
             img.unlink()
-        except e:
+        except:
             print("Failed to remove temp file")
         self.setloading.emit(False)
 
