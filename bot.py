@@ -186,6 +186,28 @@ def create_quiz(u, c):
         f"Created quiz: \"{name}\". Use ' /add {name} <query> ' to add search queries. You can add multiple queries at once separating them by comma."
     )
 
+def remove_query(u, c):
+    args = get_arguments(u)
+    if len(args) < 2:
+        u.message.reply_text(
+            "Syntax: /rmquerry <quiz_name> <query>. Use /quizes to list quizes"
+        )
+        return
+    name = args[0]
+    if "quiz" not in c.chat_data:
+        c.chat_data["quiz"] = {}
+    if name not in c.chat_data["quiz"]:
+        u.message.reply_text(f"Quiz {name} not found. Use /quizes to list quizes")
+        return
+    queries = [s.strip() for s in " ".join(args[1:]).split(",") if s.strip() != ""]
+    for query in queries:
+        for q in c.chat_data["quiz"][name]["queries"]:
+            if q['query'] == query:
+                c.chat_data["quiz"][name]["queries"].remove(q)
+                u.message.reply_text(f"Query {query} removed from {name} quiz")
+                break
+        else:
+            u.message.reply_text(f"Query {query} not found. Use /queries {name} to list valid queries")
 
 def add_query(u, c):
     args = get_arguments(u)
@@ -339,6 +361,7 @@ commands_dict = [
     {"cmd": "more", "func": more, "desc": "Get's next result for your search"},
     {"cmd": "create", "func": create_quiz, "desc": "Creates a new quiz"},
     {"cmd": "add", "func": add_query, "desc": "Adds a query to a quiz"},
+    {"cmd": "rmquerry", "func": remove_query, "desc": "Removes a querry from a quiz"},
     {"cmd": "quizes", "func": quizes, "desc": "Lists all quizes"},
     {"cmd": "queries", "func": queries, "desc": "Lists all queries for a quiz"},
     {"cmd": "remove", "func": remove_quiz, "desc": "Removes a quiz"},
