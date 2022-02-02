@@ -269,8 +269,10 @@ def queries(u, c):
         u.message.reply_text(f"Quiz {name} not found. Use /quizes to list quizes")
         return
     msg = f"Queries for quiz {name}:\n"
-    for q in c.chat_data["quiz"][name]["queries"]:
-        msg += f"{q['query']}\n"
+    names = [q['query'] for q in c.chat_data["quiz"][name]["queries"]]
+    names.sort()
+    for name in names:
+        msg += f"{name}\n"
     u.message.reply_text(msg)
 
 
