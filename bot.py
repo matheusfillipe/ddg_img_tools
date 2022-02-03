@@ -224,7 +224,11 @@ def add_query(u, c):
         return
     queries = [s.strip() for s in " ".join(args[1:]).split(",") if s.strip() != ""]
     u.message.reply_text("Adding queries... This can take a while")
+    names = [q['query'] for q in c.chat_data["quiz"][name]["queries"]]
     for query in queries:
+        if query in names:
+            u.message.reply_text(f"Query {query} already exists in {name} quiz")
+            continue
         imgs = get_image_urls(query)
         skip = 0
         while len(imgs) == 0:
