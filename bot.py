@@ -181,6 +181,9 @@ def create_quiz(u, c):
     name = args[0]
     if "quiz" not in c.chat_data:
         c.chat_data["quiz"] = {}
+    if name in c.chat_data["quiz"]:
+        u.message.reply_text(f"A quiz with that name already exists. You can remove it with /remove {name}")
+        return
     c.chat_data["quiz"][name] = {"name": name, "queries": []}
     u.message.reply_text(
         f"Created quiz: \"{name}\". Use ' /add {name} <query> ' to add search queries. You can add multiple queries at once separating them by comma."
@@ -224,10 +227,12 @@ def add_query(u, c):
         return
     queries = [s.strip() for s in " ".join(args[1:]).split(",") if s.strip() != ""]
     u.message.reply_text("Adding queries... This can take a while")
-    names = [q['query'] for q in c.chat_data["quiz"][name]["queries"]]
+    names = [q['query'].casefold() for q in c.chat_data["quiz"][name]["queries"]]
+    nrem = 0
     for query in queries:
-        if query in names:
+        if query.casefold() in names:
             u.message.reply_text(f"Query {query} already exists in {name} quiz")
+            nrem += 1
             continue
         imgs = get_image_urls(query)
         skip = 0
@@ -245,7 +250,7 @@ def add_query(u, c):
         c.chat_data["quiz"][name]["queries"].append(query)
         u.message.reply_text(f"Added query: {query['query']}")
     u.message.reply_text(
-        f"Added {len(queries)} queries to quiz {name}. Use /queries {name} to list queries for a quiz."
+        f"Added {len(queries) - nrem} queries to quiz {name}. Use /queries {name} to list queries for a quiz."
     )
 
 
@@ -317,7 +322,8 @@ def quiz(u, c):
         )
         return
     random_query = r.choice(quiz["queries"])
-    random_url = r.choice(random_query["urls"])
+    limit = c.chat_data.get("limits", {name: None}).get(name, None)
+    random_url = r.choice(random_query["urls"][:limit])
     u.message.reply_photo(random_url)
 
     options = [
@@ -359,6 +365,27 @@ def quiz(u, c):
     reply_markup = InlineKeyboardMarkup(keyboard)
     u.message.reply_text("Options: ", reply_markup=reply_markup)
 
+def limit(u, c):
+    args = get_arguments(u)
+    if len(args) < 2:
+        u.message.reply_text("Syntax: /limit <quiz_name> <number>")
+        return
+    name = args[0]
+    if "quiz" not in c.chat_data:
+        c.chat_data["quiz"] = {}
+    if name not in c.chat_data["quiz"]:
+        u.message.reply_text(f"Quiz {name} not found. Use /quizes to list quizes")
+        return
+    if args[1].isdigit():
+        limit = int(args[1])
+    else:
+        u.message.reply_text("Syntax: /limit <quiz_name> <number>  -- number must be a digit")
+        return
+    if "limits" not in c.chat_data:
+        c.chat_data["limits"] = {}
+    c.chat_data["limits"][name] = int(limit)
+    u.message.reply_text(f"Limited quiz {name} to {limit} first results for all search queries")
+
 
 commands_dict = [
     {"cmd": "start", "func": start, "desc": "See the Instructions"},
@@ -376,6 +403,7 @@ commands_dict = [
     {"cmd": "gquiz", "func": quiz, "desc": "Same as /quiz"},
     {"cmd": "gsearch", "func": search, "desc": "Same as /search"},
     {"cmd": "gscore", "func": score, "desc": "Same as /score"},
+    {"cmd": "limit", "func": limit, "desc": "Limits a quiz to the first n queries"},
     {
         "cmd": "reset",
         "func": lambda u, c: [
