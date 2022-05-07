@@ -280,8 +280,11 @@ def queries(u, c):
     msg = f"Queries for quiz {name}:\n"
     names = [q['query'] for q in c.chat_data["quiz"][name]["queries"]]
     names.sort()
+    count = 0
     for name in names:
         msg += f"{name}\n"
+        count += 1
+    msg += f"             Total: {count} queries"
     u.message.reply_text(msg)
 
 
@@ -367,8 +370,8 @@ def quiz(u, c):
 
 def limit(u, c):
     args = get_arguments(u)
-    if len(args) < 2:
-        u.message.reply_text("Syntax: /limit <quiz_name> <number>")
+    if len(args) < 1:
+        u.message.reply_text("Syntax: /limit <quiz_name> [number]")
         return
     name = args[0]
     if "quiz" not in c.chat_data:
@@ -376,10 +379,14 @@ def limit(u, c):
     if name not in c.chat_data["quiz"]:
         u.message.reply_text(f"Quiz {name} not found. Use /quizes to list quizes")
         return
+    if len(args) == 1:
+        limit = c.chat_data.get("limits", {name: None}).get(name, 1000)
+        u.message.reply_text(f"Limit for quiz {name} is {limit}")
+        return
     if args[1].isdigit():
         limit = int(args[1])
     else:
-        u.message.reply_text("Syntax: /limit <quiz_name> <number>  -- number must be a digit")
+        u.message.reply_text("Syntax: /limit <quiz_name> [number]  -- number must be a digit")
         return
     if "limits" not in c.chat_data:
         c.chat_data["limits"] = {}

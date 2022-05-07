@@ -1,0 +1,6 @@
+.env
+__pycache__/
+bot_data_bot_data
+bot_data_chat_data
+bot_data_user_data
+venv/

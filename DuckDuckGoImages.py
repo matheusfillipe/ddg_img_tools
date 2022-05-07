@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 
-import re
 import io
-import os
 import json
-import uuid
-import shutil
+import os
 import random
+import re
+import shutil
+import uuid
+
 import requests
-from PIL import Image
 from joblib import Parallel, delayed
+from PIL import Image
+
 
 def download(query, folder='.', max_urls=None, thumbnails=False, parallel=False, shuffle=False, remove_folder=False):
     if thumbnails:
@@ -32,18 +34,18 @@ def download(query, folder='.', max_urls=None, thumbnails=False, parallel=False,
     else:
         return _download_urls(urls, folder)
 
-def _download(url, folder, filename = None):
-        try:
-            filename = str(uuid.uuid4().hex) if filename is None else filename
-            while os.path.exists("{}/{}.jpg".format(folder, filename)):
-                filename = str(uuid.uuid4().hex)
-            response = requests.get(url, stream=True, timeout=1.0, allow_redirects=True)
-            with Image.open(io.BytesIO(response.content)) as im:
-                with open("{}/{}.jpg".format(folder, filename), 'wb') as out_file:
-                    im.save(out_file)
-                    return True
-        except:
-            return False
+def _download(url, folder, filename=None):
+    try:
+        filename = str(uuid.uuid4().hex) if filename is None else filename
+        while os.path.exists("{}/{}.jpg".format(folder, filename)):
+            filename = str(uuid.uuid4().hex)
+        response = requests.get(url, stream=True, timeout=1.0, allow_redirects=True)
+        with Image.open(io.BytesIO(response.content)) as im:
+            with open("{}/{}.jpg".format(folder, filename), 'wb') as out_file:
+                im.save(out_file)
+                return True
+    except Exception:
+        return False
 
 def _download_urls(urls, folder):
     downloaded = 0
@@ -98,7 +100,7 @@ def _fetch_search_urls(query, token, URL="https://duckduckgo.com/", what="image"
         urls.append(result[what])
 
     while "next" in data:
-        res = requests.get(URL+data["next"], params=query)
+        res = requests.get(URL + data["next"], params=query)
         if res.status_code != 200:
             return urls
         data = json.loads(res.text)
