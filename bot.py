@@ -109,6 +109,9 @@ def button_handler(query, u, c, callback=None):
     elif query["type"] == "moreq":
         u.message = callback.message
         quiz(u, c)
+    elif query["type"] == "score":
+        u.message = callback.message
+        score(u, c)
 
 
 def get_arguments(update):
@@ -362,6 +365,10 @@ def quiz(u, c):
             InlineKeyboardButton(
                 "More",
                 callback_data=json.dumps({"type": "moreq", "message_id": u.message.message_id}),
+            ),
+            InlineKeyboardButton(
+                "Score",
+                callback_data=json.dumps({"type": "score", "message_id": u.message.message_id}),
             ),
         ]
     ]
