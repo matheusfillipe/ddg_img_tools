@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from pprint import pp
 import io
 import json
 import os
@@ -13,7 +14,15 @@ from joblib import Parallel, delayed
 from PIL import Image
 
 
-def download(query, folder='.', max_urls=None, thumbnails=False, parallel=False, shuffle=False, remove_folder=False):
+def download(
+    query,
+    folder=".",
+    max_urls=None,
+    thumbnails=False,
+    parallel=False,
+    shuffle=False,
+    remove_folder=False,
+):
     if thumbnails:
         urls = get_image_thumbnails_urls(query)
     else:
@@ -34,6 +43,7 @@ def download(query, folder='.', max_urls=None, thumbnails=False, parallel=False,
     else:
         return _download_urls(urls, folder)
 
+
 def _download(url, folder, filename=None):
     try:
         filename = str(uuid.uuid4().hex) if filename is None else filename
@@ -41,11 +51,12 @@ def _download(url, folder, filename=None):
             filename = str(uuid.uuid4().hex)
         response = requests.get(url, stream=True, timeout=1.0, allow_redirects=True)
         with Image.open(io.BytesIO(response.content)) as im:
-            with open("{}/{}.jpg".format(folder, filename), 'wb') as out_file:
+            with open("{}/{}.jpg".format(folder, filename), "wb") as out_file:
                 im.save(out_file)
                 return True
     except Exception:
         return False
+
 
 def _download_urls(urls, folder):
     downloaded = 0
@@ -53,6 +64,7 @@ def _download_urls(urls, folder):
         if _download(url, folder):
             downloaded += 1
     return downloaded
+
 
 def _parallel_download_urls(urls, folder):
     downloaded = 0
@@ -63,35 +75,44 @@ def _parallel_download_urls(urls, folder):
                 downloaded += 1
     return downloaded
 
+
 def get_image_urls(query):
     token = _fetch_token(query)
     return _fetch_search_urls(query, token)
+
 
 def get_image_thumbnails_urls(query):
     token = _fetch_token(query)
     return _fetch_search_urls(query, token, what="thumbnail")
 
+
 def _fetch_token(query, URL="https://duckduckgo.com/"):
-    res = requests.post(URL, data={'q': query})
+    res = requests.post(URL, data={"q": query})
     if res.status_code != 200:
         return ""
-    match = re.search(r"vqd='([\d-]+)'", res.text, re.M|re.I)
+    match = re.search(r"vqd='([\d-]+)'", res.text, re.M | re.I)
     if match is None:
         return ""
     return match.group(1)
 
+
 def _fetch_search_urls(query, token, URL="https://duckduckgo.com/", what="image"):
-    query = {
-        "vqd": token,
-        "q": query,
-        "l": "wt-wt",
-        "o": "json",
-        "f": ",,,",
-        "p": "2"
+
+    headers = {
+        'authority': 'duckduckgo.com',
+        'accept': 'application/json, text/javascript, */* q=0.01',
+        'sec-fetch-dest': 'empty',
+        'x-requested-with': 'XMLHttpRequest',
+        'user-agent': 'Mozilla/5.0 (Macintosh Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.163 Safari/537.36',
+        'sec-fetch-site': 'same-origin',
+        'sec-fetch-mode': 'cors',
+        'referer': 'https://duckduckgo.com/',
+        'accept-language': 'en-US,enq=0.9',
     }
+    query = {"vqd": token, "q": query, "l": "en-us", "o": "json", "f": ",,,", "p": "2"}
     urls = []
 
-    res = requests.get(URL+"i.js", params=query)
+    res = requests.get(URL + "i.js", params=query, headers=headers)
     if res.status_code != 200:
         return urls
 
@@ -108,16 +129,20 @@ def _fetch_search_urls(query, token, URL="https://duckduckgo.com/", what="image"
             urls.append(result[what])
     return urls
 
+
 def _remove_folder(folder):
     if os.path.exists(folder):
         shutil.rmtree(folder, ignore_errors=True)
+
 
 def _create_folder(folder):
     if not os.path.exists(folder):
         os.makedirs(folder)
 
+
 if __name__ == "__main__":
     import sys
+
     imgs = get_image_urls(" ".join(sys.argv[1:]))
     for url in imgs:
         print(url)
